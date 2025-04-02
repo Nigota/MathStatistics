@@ -38,6 +38,7 @@
     <script>
         const dataset = {{ dataset|tojson|safe }}
 
+
         // Подготовка данных
         function prepareData(data) {
             const healthy = data.filter(row => row.health === 1);
@@ -198,59 +199,63 @@
 
         Plotly.newPlot(plotDiv, initialTraces, layout);
 
+        // Экспоненциальная функция для easing (быстро в начале, медленно в конце)
+        function exponentialEasing(t) {
+            return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+        }
+
         // Анимация
         function animate() {
-            const totalDuration = 1000; // 2 секунды общее время
-            const fps = 120;
-            const frameDuration = 1000 / fps;
-            const totalFrames = totalDuration / frameDuration;
+            const totalDuration = 2500; // 2.5 секунда общее время
+            const startTime = Date.now();
 
-            // Разделяем анимацию на фазы
-            const riseDuration = totalDuration / 2; // 1s - подъем
-            const buildDuration = totalDuration / 2; // 1s - построение
-
-            let startTime = null;
+            // Состояние анимации
             let currentTraces = JSON.parse(JSON.stringify(initialTraces));
 
-            function animateFrame(timestamp) {
-                if (!startTime) startTime = timestamp;
-                const elapsed = timestamp - startTime;
-                const globalProgress = Math.min(1, elapsed / totalDuration);
+            function animateFrame() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(1, elapsed / totalDuration);
+                const easedProgress = exponentialEasing(progress);
 
-                // Фаза подъема (первые 50% времени)
-                if (globalProgress <= 0.5) {
-                    const riseProgress = globalProgress * 2;
-                    const easedProgress = riseProgress * riseProgress; // Квадратичное easing
+                // Разделяем анимацию на фазы
+                if (progress <= 0.5) {
+                    // Фаза 1: Подъем средних линий (0-0.5s)
+                    const phaseProgress = progress * 2;
+                    const easedPhaseProgress = exponentialEasing(phaseProgress);
 
-                    // Поднимаем все точки одновременно
                     for (let i = 0; i < data.wavenumber.length; i++) {
-                        currentTraces[0].y[i] = data.yRange[0] + (data.healthyMeans[i] - data.yRange[0]) * easedProgress;
-                        currentTraces[3].y[i] = data.yRange[0] + (data.unhealthyMeans[i] - data.yRange[0]) * easedProgress;
+                        // Здоровые
+                        currentTraces[0].y[i] = data.yRange[0] +
+                            (data.healthyMeans[i] - data.yRange[0]) * easedPhaseProgress;
+
+                        // Больные
+                        currentTraces[3].y[i] = data.yRange[0] +
+                            (data.unhealthyMeans[i] - data.yRange[0]) * easedPhaseProgress;
                     }
-                }
-                // Фаза построения (вторые 50% времени)
-                else {
-                    const buildProgress = (globalProgress - 0.5) * 2;
+                } else {
+                    // Фаза 2: Построение СКО (0.5-1s)
+                    const phaseProgress = (progress - 0.5) * 2;
+                    const easedPhaseProgress = exponentialEasing(phaseProgress);
 
-                    // Построение СКО для здоровых
-                    if (buildProgress > 0) {
-                        const stdProgress = buildProgress;
-                        const easedStdProgress = stdProgress * stdProgress; // Квадратичное easing
+                    for (let i = 0; i < data.wavenumber.length; i++) {
+                        // Здоровые +СКО
+                        currentTraces[1].y[i] = data.healthyMeans[i] +
+                            data.healthyStds[i] * easedPhaseProgress;
 
-                        for (let i = 0; i < data.wavenumber.length; i++) {
-                            currentTraces[1].y[i] = data.healthyMeans[i] + data.healthyStds[i] * easedStdProgress;
-                            currentTraces[2].y[i] = data.healthyMeans[i] - data.healthyStds[i] * easedStdProgress;
-                        }
-                    }
+                        // Здоровые -СКО
+                        currentTraces[2].y[i] = data.healthyMeans[i] -
+                            data.healthyStds[i] * easedPhaseProgress;
 
-                    // Построение СКО для больных с небольшой задержкой
-                    if (buildProgress > 0.2) {
-                        const patientStdProgress = Math.min(1, (buildProgress - 0.2) / 0.8);
-                        const easedPatientStdProgress = patientStdProgress * patientStdProgress;
+                        // Больные +СКО (с небольшой задержкой)
+                        if (phaseProgress > 0.2) {
+                            const patientProgress = (phaseProgress - 0.2) / 0.8;
+                            const easedPatientProgress = exponentialEasing(patientProgress);
 
-                        for (let i = 0; i < data.wavenumber.length; i++) {
-                            currentTraces[4].y[i] = data.unhealthyMeans[i] + data.unhealthyStds[i] * easedPatientStdProgress;
-                            currentTraces[5].y[i] = data.unhealthyMeans[i] - data.unhealthyStds[i] * easedPatientStdProgress;
+                            currentTraces[4].y[i] = data.unhealthyMeans[i] +
+                                data.unhealthyStds[i] * easedPatientProgress;
+
+                            currentTraces[5].y[i] = data.unhealthyMeans[i] -
+                                data.unhealthyStds[i] * easedPatientProgress;
                         }
                     }
                 }
@@ -265,12 +270,12 @@
                     frame: { duration: 0, redraw: true }
                 });
 
-                if (globalProgress < 1) {
+                if (progress < 1) {
                     requestAnimationFrame(animateFrame);
                 }
             }
 
-            requestAnimationFrame(animateFrame);
+            animateFrame();
         }
 
         // Запускаем анимацию

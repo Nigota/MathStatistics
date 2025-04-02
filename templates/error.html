@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ошибка приложения</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #343a40;
+        }
+        .error-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 600px;
+            text-align: center;
+        }
+        h1 {
+            color: #dc3545;
+            margin-bottom: 20px;
+        }
+        .error-details {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-family: monospace;
+            text-align: left;
+            overflow-wrap: break-word;
+        }
+        .home-link {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .home-link:hover {
+            background-color: #0056b3;
+        }
+        .logo {
+            max-width: 150px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <!-- Можно добавить логотип -->
+        <!-- <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Логотип" class="logo"> -->
+
+        <h1>Произошла ошибка</h1>
+        <p>Приносим извинения за неудобства. Наша команда уже работает над устранением проблемы.</p>
+
+        {% if error %}
+        <div class="error-details">
+            <strong>Детали ошибки:</strong><br>
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <p>Попробуйте обновить страницу или вернуться позже.</p>
+
+        <a href="{{ url_for('index') }}" class="home-link">Вернуться на главную</a>
+
+        <div style="margin-top: 30px; font-size: 0.9em; color: #6c757d;">
+            <p>Если ошибка повторяется, свяжитесь с поддержкой:</p>
+            <p>Email: support@example.com<br>Телефон: +7 (123) 456-78-90</p>
+        </div>
+    </div>
+</body>
+</html>
