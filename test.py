@@ -15,5 +15,5 @@ app.config['MODEL_PATH'] = os.path.join(os.path.dirname(__file__), 'models', 'mo
 data = []
 print(app.config['DATA_PATH'])
 if os.path.exists(app.config['DATA_PATH']):
-    data = get_ai_data(app.config['DATA_PATH'], STUDENT_NUMBER, STEP)
+    data = get_plot_data(app.config['DATA_PATH'], STUDENT_NUMBER, STEP)
 print(data)

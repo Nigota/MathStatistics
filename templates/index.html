@@ -1,10 +1,280 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анализ спектроскопии пациентов</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: white;
+        }
+        .chart-container {
+            width: 900px;
+            height: 650px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+    </style>
 </head>
 <body>
+    <h1>Среднее значение волнового числа у пациентов</h1>
+    <div class="subtitle">со среднеквадратичным отклонением</div>
 
+    <div id="mainChart" class="chart-container"></div>
+
+    <script>
+        const dataset = {{ dataset|tojson|safe }}
+
+        // Подготовка данных
+        function prepareData(data) {
+            const healthy = data.filter(row => row.health === 1);
+            const unhealthy = data.filter(row => row.health === 0);
+
+            const wavenumber = healthy.map(row => row.wavenumber);
+
+            function calculateStats(rows) {
+                const patientCols = Object.keys(rows[0]).filter(key => key.startsWith('patient'));
+
+                const means = [];
+                const stds = [];
+                const allValues = [];
+
+                for (let i = 0; i < rows.length; i++) {
+                    const values = patientCols.map(col => rows[i][col]);
+                    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+                    const std = Math.sqrt(values.reduce((sq, n) => sq + Math.pow(n - mean, 2), 0) / values.length);
+
+                    means.push(mean);
+                    stds.push(std);
+                    allValues.push(...values);
+                }
+
+                return { means, stds, allValues };
+            }
+
+            const healthyStats = calculateStats(healthy);
+            const unhealthyStats = calculateStats(unhealthy);
+
+            // Определяем границы для оси Y
+            const maxValue = Math.max(
+                ...healthyStats.means,
+                ...unhealthyStats.means,
+                ...healthyStats.means.map((m, i) => m + healthyStats.stds[i]),
+                ...unhealthyStats.means.map((m, i) => m + unhealthyStats.stds[i])
+            );
+            const minValue = Math.min(
+                ...healthyStats.means,
+                ...unhealthyStats.means,
+                ...healthyStats.means.map((m, i) => m - healthyStats.stds[i]),
+                ...unhealthyStats.means.map((m, i) => m - unhealthyStats.stds[i])
+            );
+            const padding = (maxValue - minValue) * 0.05;
+
+            return {
+                wavenumber,
+                healthyMeans: healthyStats.means,
+                healthyStds: healthyStats.stds,
+                unhealthyMeans: unhealthyStats.means,
+                unhealthyStds: unhealthyStats.stds,
+                yRange: [minValue - padding, maxValue + padding]
+            };
+        }
+
+        // Подготавливаем данные
+        const data = prepareData(dataset);
+        const plotDiv = document.getElementById('mainChart');
+
+        // Настройки графика
+        const layout = {
+            xaxis: {
+                title: 'Волновое число (cm⁻¹)',
+                range: [Math.min(...data.wavenumber), Math.max(...data.wavenumber)],
+                showgrid: true,
+                gridcolor: '#eee',
+                zeroline: true,
+                zerolinecolor: '#aaa'
+            },
+            yaxis: {
+                title: 'Интенсивность',
+                range: data.yRange,
+                showgrid: true,
+                gridcolor: '#eee',
+                zeroline: true,
+                zerolinecolor: '#aaa'
+            },
+            legend: {
+                orientation: 'h',
+                y: -0.25,
+                font: {
+                    size: 12
+                }
+            },
+            margin: {
+                l: 70,
+                r: 40,
+                b: 80,
+                t: 60,
+                pad: 10
+            },
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white',
+            hovermode: 'x unified'
+        };
+
+        // Создаем начальное состояние графика
+        const initialTraces = [
+            // Здоровые среднее (0)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                name: 'Здоровые (среднее)',
+                line: { color: '#1f77b4', width: 3 },
+                mode: 'lines'
+            },
+            // Здоровые +СКО (1)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                name: 'Здоровые +СКО',
+                line: { color: '#1f77b4', width: 1, dash: 'dot' },
+                mode: 'lines',
+                showlegend: true,
+                hoverinfo: 'none'
+            },
+            // Здоровые -СКО (2)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                line: { color: '#1f77b4', width: 1, dash: 'dot' },
+                mode: 'lines',
+                showlegend: false,
+                hoverinfo: 'none',
+                fill: 'tonexty',
+                fillcolor: 'rgba(31, 119, 180, 0.15)'
+            },
+            // Больные среднее (3)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                name: 'Больные (среднее)',
+                line: { color: '#ff7f0e', width: 3 },
+                mode: 'lines'
+            },
+            // Больные +СКО (4)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                name: 'Больные +СКО',
+                line: { color: '#ff7f0e', width: 1, dash: 'dot' },
+                mode: 'lines',
+                showlegend: true,
+                hoverinfo: 'none'
+            },
+            // Больные -СКО (5)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                line: { color: '#ff7f0e', width: 1, dash: 'dot' },
+                mode: 'lines',
+                showlegend: false,
+                hoverinfo: 'none',
+                fill: 'tonexty',
+                fillcolor: 'rgba(255, 127, 14, 0.15)'
+            }
+        ];
+
+        Plotly.newPlot(plotDiv, initialTraces, layout);
+
+        // Анимация
+        function animate() {
+            const totalDuration = 1000; // 2 секунды общее время
+            const fps = 120;
+            const frameDuration = 1000 / fps;
+            const totalFrames = totalDuration / frameDuration;
+
+            // Разделяем анимацию на фазы
+            const riseDuration = totalDuration / 2; // 1s - подъем
+            const buildDuration = totalDuration / 2; // 1s - построение
+
+            let startTime = null;
+            let currentTraces = JSON.parse(JSON.stringify(initialTraces));
+
+            function animateFrame(timestamp) {
+                if (!startTime) startTime = timestamp;
+                const elapsed = timestamp - startTime;
+                const globalProgress = Math.min(1, elapsed / totalDuration);
+
+                // Фаза подъема (первые 50% времени)
+                if (globalProgress <= 0.5) {
+                    const riseProgress = globalProgress * 2;
+                    const easedProgress = riseProgress * riseProgress; // Квадратичное easing
+
+                    // Поднимаем все точки одновременно
+                    for (let i = 0; i < data.wavenumber.length; i++) {
+                        currentTraces[0].y[i] = data.yRange[0] + (data.healthyMeans[i] - data.yRange[0]) * easedProgress;
+                        currentTraces[3].y[i] = data.yRange[0] + (data.unhealthyMeans[i] - data.yRange[0]) * easedProgress;
+                    }
+                }
+                // Фаза построения (вторые 50% времени)
+                else {
+                    const buildProgress = (globalProgress - 0.5) * 2;
+
+                    // Построение СКО для здоровых
+                    if (buildProgress > 0) {
+                        const stdProgress = buildProgress;
+                        const easedStdProgress = stdProgress * stdProgress; // Квадратичное easing
+
+                        for (let i = 0; i < data.wavenumber.length; i++) {
+                            currentTraces[1].y[i] = data.healthyMeans[i] + data.healthyStds[i] * easedStdProgress;
+                            currentTraces[2].y[i] = data.healthyMeans[i] - data.healthyStds[i] * easedStdProgress;
+                        }
+                    }
+
+                    // Построение СКО для больных с небольшой задержкой
+                    if (buildProgress > 0.2) {
+                        const patientStdProgress = Math.min(1, (buildProgress - 0.2) / 0.8);
+                        const easedPatientStdProgress = patientStdProgress * patientStdProgress;
+
+                        for (let i = 0; i < data.wavenumber.length; i++) {
+                            currentTraces[4].y[i] = data.unhealthyMeans[i] + data.unhealthyStds[i] * easedPatientStdProgress;
+                            currentTraces[5].y[i] = data.unhealthyMeans[i] - data.unhealthyStds[i] * easedPatientStdProgress;
+                        }
+                    }
+                }
+
+                // Обновляем график
+                Plotly.animate(plotDiv, {
+                    data: currentTraces,
+                    traces: [0, 1, 2, 3, 4, 5],
+                    layout: {}
+                }, {
+                    transition: { duration: 0 },
+                    frame: { duration: 0, redraw: true }
+                });
+
+                if (globalProgress < 1) {
+                    requestAnimationFrame(animateFrame);
+                }
+            }
+
+            requestAnimationFrame(animateFrame);
+        }
+
+        // Запускаем анимацию
+        setTimeout(animate, 500);
+    </script>
 </body>
 </html>
