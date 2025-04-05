@@ -1,10 +1,272 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анализ спектроскопии пациентов</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: white;
+        }
+        .chart-container {
+            width: 900px;
+            height: 650px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+    </style>
 </head>
 <body>
+    <h1>Среднее значение волнового числа у пациентов</h1>
+    <div class="subtitle">со среднеквадратичным отклонением</div>
 
+    <div id="mainChart" class="chart-container"></div>
+
+    <script>
+        // Данные из Flask
+        const dataset = {{ dataset|tojson|safe }};
+
+        // Подготовка данных
+        function prepareData(data) {
+            // Разделяем данные на здоровых (health=1) и больных (health=0)
+            const healthy = data.filter(row => row.health === 1);
+            const unhealthy = data.filter(row => row.health === 0);
+
+            // Получаем волновые числа (предполагаем, что они одинаковые для здоровых и больных)
+            const wavenumber = healthy.map(row => row.wavenumber);
+
+            // Собираем средние значения и стандартные отклонения
+            const healthyMeans = healthy.map(row => row.mean_values);
+            const healthyStds = healthy.map(row => row.std);
+            const unhealthyMeans = unhealthy.map(row => row.mean_values);
+            const unhealthyStds = unhealthy.map(row => row.std);
+
+            // Определяем границы для оси Y
+            const maxValue = Math.max(
+                ...healthyMeans,
+                ...unhealthyMeans,
+                ...healthyMeans.map((m, i) => m + healthyStds[i]),
+                ...unhealthyMeans.map((m, i) => m + unhealthyStds[i])
+            );
+            const minValue = Math.min(
+                ...healthyMeans,
+                ...unhealthyMeans,
+                ...healthyMeans.map((m, i) => m - healthyStds[i]),
+                ...unhealthyMeans.map((m, i) => m - unhealthyStds[i])
+            );
+
+            // Добавляем отступы к границам
+            const padding = (maxValue - minValue) * 0.1;
+            const yMin = minValue - padding;
+            const yMax = maxValue + padding;
+
+            return {
+                wavenumber,
+                healthyMeans,
+                healthyStds,
+                unhealthyMeans,
+                unhealthyStds,
+                yRange: [yMin, yMax],
+                calculatedMin: minValue,
+                calculatedMax: maxValue
+            };
+        }
+
+        // Подготавливаем данные
+        const data = prepareData(dataset);
+        const plotDiv = document.getElementById('mainChart');
+
+        // Выводим рассчитанные значения в консоль для отладки
+        console.log('Минимальное значение Y:', data.calculatedMin);
+        console.log('Максимальное значение Y:', data.calculatedMax);
+        console.log('Диапазон Y:', data.yRange);
+
+        // Настройки графика
+        const layout = {
+            title: 'Среднее значение волнового числа у пациентов',
+            xaxis: {
+                title: 'Волновое число (cm⁻¹)',
+                range: [1260, 1360],  // Фиксированный диапазон по X
+                showgrid: true,
+                gridcolor: '#eee',
+                zeroline: true,
+                zerolinecolor: '#aaa'
+            },
+            yaxis: {
+                title: 'Значение',
+                range: data.yRange,  // Автоматически рассчитанный диапазон по Y
+                showgrid: true,
+                gridcolor: '#eee',
+                zeroline: true,
+                zerolinecolor: '#aaa'
+            },
+            legend: {
+                orientation: 'h',
+                y: -0.25,
+                font: {
+                    size: 12
+                }
+            },
+            margin: {
+                l: 70,
+                r: 40,
+                b: 80,
+                t: 90,
+                pad: 10
+            },
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white',
+            hovermode: 'x unified'
+        };
+
+        // Создаем начальное состояние графика
+        const initialTraces = [
+            // Здоровые среднее (0)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                name: 'Здоровые (среднее)',
+                line: { color: 'green', width: 3 },
+                mode: 'lines'
+            },
+            // Здоровые +СКО (1)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                name: 'Здоровые +СКО',
+                line: { color: 'green', width: 1, dash: 'dot' },
+                mode: 'lines',
+                showlegend: true,
+                hoverinfo: 'none'
+            },
+            // Здоровые -СКО (2)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                line: { color: 'green', width: 1, dash: 'dot' },
+                mode: 'lines',
+                showlegend: false,
+                hoverinfo: 'none',
+                fill: 'tonexty',
+                fillcolor: 'rgba(0, 128, 0, 0.15)'
+            },
+            // Больные среднее (3)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                name: 'Больные (среднее)',
+                line: { color: 'red', width: 3 },
+                mode: 'lines'
+            },
+            // Больные +СКО (4)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                name: 'Больные +СКО',
+                line: { color: 'red', width: 1, dash: 'dot' },
+                mode: 'lines',
+                showlegend: true,
+                hoverinfo: 'none'
+            },
+            // Больные -СКО (5)
+            {
+                x: data.wavenumber,
+                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
+                line: { color: 'red', width: 1, dash: 'dot' },
+                mode: 'lines',
+                showlegend: false,
+                hoverinfo: 'none',
+                fill: 'tonexty',
+                fillcolor: 'rgba(255, 0, 0, 0.15)'
+            }
+        ];
+
+        // Создаем график
+        Plotly.newPlot(plotDiv, initialTraces, layout);
+
+        // Функция для плавной анимации
+        function exponentialEasing(t) {
+            return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+        }
+
+        // Анимация графика
+        function animate() {
+            const totalDuration = 2500;
+            const startTime = Date.now();
+            let currentTraces = JSON.parse(JSON.stringify(initialTraces));
+
+            function animateFrame() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(1, elapsed / totalDuration);
+                const easedProgress = exponentialEasing(progress);
+
+                if (progress <= 0.5) {
+                    const phaseProgress = progress * 2;
+                    const easedPhaseProgress = exponentialEasing(phaseProgress);
+
+                    for (let i = 0; i < data.wavenumber.length; i++) {
+                        currentTraces[0].y[i] = data.yRange[0] +
+                            (data.healthyMeans[i] - data.yRange[0]) * easedPhaseProgress;
+
+                        currentTraces[3].y[i] = data.yRange[0] +
+                            (data.unhealthyMeans[i] - data.yRange[0]) * easedPhaseProgress;
+                    }
+                } else {
+                    const phaseProgress = (progress - 0.5) * 2;
+                    const easedPhaseProgress = exponentialEasing(phaseProgress);
+
+                    for (let i = 0; i < data.wavenumber.length; i++) {
+                        currentTraces[1].y[i] = data.healthyMeans[i] +
+                            data.healthyStds[i] * easedPhaseProgress;
+
+                        currentTraces[2].y[i] = data.healthyMeans[i] -
+                            data.healthyStds[i] * easedPhaseProgress;
+
+                        if (phaseProgress > 0.2) {
+                            const patientProgress = (phaseProgress - 0.2) / 0.8;
+                            const easedPatientProgress = exponentialEasing(patientProgress);
+
+                            currentTraces[4].y[i] = data.unhealthyMeans[i] +
+                                data.unhealthyStds[i] * easedPatientProgress;
+
+                            currentTraces[5].y[i] = data.unhealthyMeans[i] -
+                                data.unhealthyStds[i] * easedPatientProgress;
+                        }
+                    }
+                }
+
+                Plotly.animate(plotDiv, {
+                    data: currentTraces,
+                    traces: [0, 1, 2, 3, 4, 5],
+                    layout: {}
+                }, {
+                    transition: { duration: 0 },
+                    frame: { duration: 0, redraw: true }
+                });
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateFrame);
+                }
+            }
+
+            animateFrame();
+        }
+
+        // Запускаем анимацию с небольшой задержкой
+        setTimeout(animate, 500);
+    </script>
 </body>
 </html>
