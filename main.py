@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify
-from utils import get_plot_data, get_ai_data
+from utils import get_plot_data, get_ai_data, get_boxplot_data
 import os
 from typing import Dict, Any
 
@@ -103,6 +103,7 @@ def index():
     """Основная страница с формой ввода"""
     global STUDENT_NUMBER, STEP
     initial_data = load_and_prepare_data(STUDENT_NUMBER, STEP)
+    print(initial_data)
     return render_template('index.html', initial_data=initial_data)
 
 
@@ -148,11 +149,12 @@ def get_new_data():
         }), 500
 
 
-@app.route('/get_boxplot_data', methods=['GET'])
-def get_boxplot_data():
+@app.route('/get_new_boxplot_data', methods=['GET'])
+def get_new_boxplot_data():
     """API для получения данных boxplot'ов"""
     try:
         wavenumber = float(request.args.get('wavenumber'))
+        print(wavenumber)
         if wavenumber <= 0:
             raise ValueError("Wavenumber must be positive")
 
