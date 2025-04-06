@@ -34,5 +34,34 @@ def get_plot_data(file_path, student_number, step):
     unhealthy_df = unhealthy_df.rename(columns=rename_dict)
 
     df = pd.concat((healthy_df, unhealthy_df)).reset_index(drop=True)
+    df['mean_values'] = df.drop(columns=['wavenumber', 'health']).mean(axis=1)
+    df['std'] = df.drop(columns=['wavenumber', 'health', 'mean_values']).std(axis=1)
 
+    return df
+
+
+def get_boxplot_data(file_path, wavenumber):
+    healthy_df = pd.read_excel(file_path, SHEET1)
+    unhealthy_df = pd.read_excel(file_path, SHEET2)
+
+    healthy_df = healthy_df[healthy_df['wavenumber'] == wavenumber].reset_index(drop=True)
+    unhealthy_df = unhealthy_df[unhealthy_df['wavenumber'] == wavenumber].reset_index(drop=True)
+    healthy_df['health'] = 1
+    unhealthy_df['health'] = 0
+
+    rename_dict = {
+        col: col.replace('healthy', 'patient')
+        for col in healthy_df.columns
+        if col.startswith('healthy')
+    }
+    healthy_df = healthy_df.rename(columns=rename_dict)
+
+    rename_dict = {
+        col: col.replace('heart_patient', 'patient')
+        for col in unhealthy_df.columns
+        if col.startswith('heart_patient')
+    }
+    unhealthy_df = unhealthy_df.rename(columns=rename_dict)
+
+    df = pd.concat((healthy_df, unhealthy_df)).reset_index(drop=True)
     return df

@@ -8,265 +8,297 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: white;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            background-color: #f5f5f5;
         }
-        .chart-container {
-            width: 900px;
-            height: 650px;
-            margin: 0 auto;
+        .control-panel {
+            width: 250px;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            height: 100vh;
+        }
+        .control-group {
+            margin-bottom: 20px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        .control-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .control-group input:invalid {
+            border-color: #ff6b6b;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            width: 100%;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .graph-container {
+            flex: 1;
+            padding: 20px;
+            background-color: white;
         }
         h1 {
             color: #333;
-            text-align: center;
-            font-size: 24px;
-            margin-bottom: 10px;
+            margin-top: 0;
         }
-        .subtitle {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
+        .current-values {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+        }
+        .error-message {
+            color: #ff6b6b;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
         }
     </style>
 </head>
 <body>
-    <h1>Среднее значение волнового числа у пациентов</h1>
-    <div class="subtitle">со среднеквадратичным отклонением</div>
+    <div class="control-panel">
+        <h1>Параметры</h1>
 
-    <div id="mainChart" class="chart-container"></div>
+        <div class="control-group">
+            <label for="student-input">Student Number:</label>
+            <input type="number" id="student-input" min="1" value="{{ initial_data.student_number }}" required>
+            <div class="error-message" id="student-error">Должно быть целое число > 0</div>
+        </div>
+
+        <div class="control-group">
+            <label for="step-input">Step:</label>
+            <input type="number" id="step-input" min="1" value="{{ initial_data.step }}" required>
+            <div class="error-message" id="step-error">Должно быть целое число > 0</div>
+        </div>
+
+        <button id="update-btn">Обновить график</button>
+
+        <div class="current-values">
+            <p>Текущий студент: <span id="student-number">{{ initial_data.student_number }}</span></p>
+            <p>Текущий шаг: <span id="step-value">{{ initial_data.step }}</span></p>
+        </div>
+    </div>
+
+    <div class="graph-container">
+        <div id="graph" style="width:100%; height:100%;"></div>
+    </div>
 
     <script>
-        // Данные из Flask
-        const dataset = {{ dataset|tojson|safe }};
+        // Инициализация графика с начальными данными
+        const initialData = {{ initial_data|tojson|safe }};
+        let currentData = initialData;
 
-        // Подготовка данных
-        function prepareData(data) {
-            // Разделяем данные на здоровых (health=1) и больных (health=0)
-            const healthy = data.filter(row => row.health === 1);
-            const unhealthy = data.filter(row => row.health === 0);
-
-            // Получаем волновые числа (предполагаем, что они одинаковые для здоровых и больных)
-            const wavenumber = healthy.map(row => row.wavenumber);
-
-            // Собираем средние значения и стандартные отклонения
-            const healthyMeans = healthy.map(row => row.mean_values);
-            const healthyStds = healthy.map(row => row.std);
-            const unhealthyMeans = unhealthy.map(row => row.mean_values);
-            const unhealthyStds = unhealthy.map(row => row.std);
-
-            // Определяем границы для оси Y
-            const maxValue = Math.max(
-                ...healthyMeans,
-                ...unhealthyMeans,
-                ...healthyMeans.map((m, i) => m + healthyStds[i]),
-                ...unhealthyMeans.map((m, i) => m + unhealthyStds[i])
-            );
-            const minValue = Math.min(
-                ...healthyMeans,
-                ...unhealthyMeans,
-                ...healthyMeans.map((m, i) => m - healthyStds[i]),
-                ...unhealthyMeans.map((m, i) => m - unhealthyStds[i])
-            );
-
-            // Добавляем отступы к границам
-            const padding = (maxValue - minValue) * 0.1;
-            const yMin = minValue - padding;
-            const yMax = maxValue + padding;
-
-            return {
-                wavenumber,
-                healthyMeans,
-                healthyStds,
-                unhealthyMeans,
-                unhealthyStds,
-                yRange: [yMin, yMax],
-                calculatedMin: minValue,
-                calculatedMax: maxValue
-            };
-        }
-
-        // Подготавливаем данные
-        const data = prepareData(dataset);
-        const plotDiv = document.getElementById('mainChart');
-
-        // Выводим рассчитанные значения в консоль для отладки
-        console.log('Минимальное значение Y:', data.calculatedMin);
-        console.log('Максимальное значение Y:', data.calculatedMax);
-        console.log('Диапазон Y:', data.yRange);
-
-        // Настройки графика
-        const layout = {
-            title: 'Среднее значение волнового числа у пациентов',
-            xaxis: {
-                title: 'Волновое число (cm⁻¹)',
-                range: [1260, 1360],  // Фиксированный диапазон по X
-                showgrid: true,
-                gridcolor: '#eee',
-                zeroline: true,
-                zerolinecolor: '#aaa'
-            },
-            yaxis: {
-                title: 'Значение',
-                range: data.yRange,  // Автоматически рассчитанный диапазон по Y
-                showgrid: true,
-                gridcolor: '#eee',
-                zeroline: true,
-                zerolinecolor: '#aaa'
-            },
-            legend: {
-                orientation: 'h',
-                y: -0.25,
-                font: {
-                    size: 12
-                }
-            },
-            margin: {
-                l: 70,
-                r: 40,
-                b: 80,
-                t: 90,
-                pad: 10
-            },
-            plot_bgcolor: 'white',
-            paper_bgcolor: 'white',
-            hovermode: 'x unified'
-        };
-
-        // Создаем начальное состояние графика
-        const initialTraces = [
-            // Здоровые среднее (0)
-            {
-                x: data.wavenumber,
-                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
-                name: 'Здоровые (среднее)',
-                line: { color: 'green', width: 3 },
-                mode: 'lines'
-            },
-            // Здоровые +СКО (1)
-            {
-                x: data.wavenumber,
-                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
-                name: 'Здоровые +СКО',
-                line: { color: 'green', width: 1, dash: 'dot' },
-                mode: 'lines',
-                showlegend: true,
-                hoverinfo: 'none'
-            },
-            // Здоровые -СКО (2)
-            {
-                x: data.wavenumber,
-                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
-                line: { color: 'green', width: 1, dash: 'dot' },
-                mode: 'lines',
-                showlegend: false,
-                hoverinfo: 'none',
-                fill: 'tonexty',
-                fillcolor: 'rgba(0, 128, 0, 0.15)'
-            },
-            // Больные среднее (3)
-            {
-                x: data.wavenumber,
-                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
-                name: 'Больные (среднее)',
-                line: { color: 'red', width: 3 },
-                mode: 'lines'
-            },
-            // Больные +СКО (4)
-            {
-                x: data.wavenumber,
-                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
-                name: 'Больные +СКО',
-                line: { color: 'red', width: 1, dash: 'dot' },
-                mode: 'lines',
-                showlegend: true,
-                hoverinfo: 'none'
-            },
-            // Больные -СКО (5)
-            {
-                x: data.wavenumber,
-                y: new Array(data.wavenumber.length).fill(data.yRange[0]),
-                line: { color: 'red', width: 1, dash: 'dot' },
-                mode: 'lines',
-                showlegend: false,
-                hoverinfo: 'none',
-                fill: 'tonexty',
-                fillcolor: 'rgba(255, 0, 0, 0.15)'
+        // Проверка существования элемента
+        function getElementOrThrow(id) {
+            const element = document.getElementById(id);
+            if (!element) {
+                throw new Error(`Элемент с ID ${id} не найден`);
             }
-        ];
-
-        // Создаем график
-        Plotly.newPlot(plotDiv, initialTraces, layout);
-
-        // Функция для плавной анимации
-        function exponentialEasing(t) {
-            return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+            return element;
         }
 
-        // Анимация графика
-        function animate() {
-            const totalDuration = 2500;
-            const startTime = Date.now();
-            let currentTraces = JSON.parse(JSON.stringify(initialTraces));
+        // Валидация ввода
+        function validateInput(inputId, errorId) {
+            try {
+                const input = getElementOrThrow(inputId);
+                const errorElement = getElementOrThrow(errorId);
+                const button = getElementOrThrow('update-btn');
 
-            function animateFrame() {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(1, elapsed / totalDuration);
-                const easedProgress = exponentialEasing(progress);
+                const value = input.value.trim();
+                const numValue = parseInt(value);
+                const isValid = value !== '' && numValue > 0 && numValue.toString() === value;
 
-                if (progress <= 0.5) {
-                    const phaseProgress = progress * 2;
-                    const easedPhaseProgress = exponentialEasing(phaseProgress);
-
-                    for (let i = 0; i < data.wavenumber.length; i++) {
-                        currentTraces[0].y[i] = data.yRange[0] +
-                            (data.healthyMeans[i] - data.yRange[0]) * easedPhaseProgress;
-
-                        currentTraces[3].y[i] = data.yRange[0] +
-                            (data.unhealthyMeans[i] - data.yRange[0]) * easedPhaseProgress;
-                    }
+                if (!isValid) {
+                    input.classList.add('invalid');
+                    errorElement.style.display = 'block';
+                    button.disabled = true;
+                    return false;
                 } else {
-                    const phaseProgress = (progress - 0.5) * 2;
-                    const easedPhaseProgress = exponentialEasing(phaseProgress);
+                    input.classList.remove('invalid');
+                    errorElement.style.display = 'none';
+                    button.disabled = false;
+                    return true;
+                }
+            } catch (error) {
+                console.error('Ошибка валидации:', error);
+                return false;
+            }
+        }
 
-                    for (let i = 0; i < data.wavenumber.length; i++) {
-                        currentTraces[1].y[i] = data.healthyMeans[i] +
-                            data.healthyStds[i] * easedPhaseProgress;
-
-                        currentTraces[2].y[i] = data.healthyMeans[i] -
-                            data.healthyStds[i] * easedPhaseProgress;
-
-                        if (phaseProgress > 0.2) {
-                            const patientProgress = (phaseProgress - 0.2) / 0.8;
-                            const easedPatientProgress = exponentialEasing(patientProgress);
-
-                            currentTraces[4].y[i] = data.unhealthyMeans[i] +
-                                data.unhealthyStds[i] * easedPatientProgress;
-
-                            currentTraces[5].y[i] = data.unhealthyMeans[i] -
-                                data.unhealthyStds[i] * easedPatientProgress;
-                        }
+        // Создание графика
+        function createPlot(data) {
+            try {
+                const traces = [
+                    {
+                        x: data.wavenumbers,
+                        y: data.healthy.means,
+                        name: 'Здоровые (среднее)',
+                        line: { color: 'green', width: 3 },
+                        mode: 'lines'
+                    },
+                    {
+                        x: data.wavenumbers,
+                        y: data.healthy.means.map((m, i) => m + data.healthy.stds[i]),
+                        name: 'Здоровые +СКО',
+                        line: { color: 'green', width: 1, dash: 'dot' },
+                        mode: 'lines',
+                        hoverinfo: 'none'
+                    },
+                    {
+                        x: data.wavenumbers,
+                        y: data.healthy.means.map((m, i) => m - data.healthy.stds[i]),
+                        line: { color: 'green', width: 1, dash: 'dot' },
+                        mode: 'lines',
+                        fill: 'tonexty',
+                        fillcolor: 'rgba(0, 128, 0, 0.15)',
+                        hoverinfo: 'none',
+                        showlegend: false
+                    },
+                    {
+                        x: data.wavenumbers,
+                        y: data.unhealthy.means,
+                        name: 'Больные (среднее)',
+                        line: { color: 'red', width: 3 },
+                        mode: 'lines'
+                    },
+                    {
+                        x: data.wavenumbers,
+                        y: data.unhealthy.means.map((m, i) => m + data.unhealthy.stds[i]),
+                        name: 'Больные +СКО',
+                        line: { color: 'red', width: 1, dash: 'dot' },
+                        mode: 'lines',
+                        hoverinfo: 'none'
+                    },
+                    {
+                        x: data.wavenumbers,
+                        y: data.unhealthy.means.map((m, i) => m - data.unhealthy.stds[i]),
+                        line: { color: 'red', width: 1, dash: 'dot' },
+                        mode: 'lines',
+                        fill: 'tonexty',
+                        fillcolor: 'rgba(255, 0, 0, 0.15)',
+                        hoverinfo: 'none',
+                        showlegend: false
                     }
+                ];
+
+                const layout = {
+                    title: 'Среднее значение волнового числа у пациентов',
+                    xaxis: {
+                        title: 'Волновое число (cm⁻¹)',
+                        range: data.ranges.x,
+                        showgrid: true,
+                        gridcolor: '#eee'
+                    },
+                    yaxis: {
+                        title: 'Значение',
+                        range: data.ranges.y,
+                        showgrid: true,
+                        gridcolor: '#eee'
+                    },
+                    legend: {
+                        orientation: 'h',
+                        y: -0.2
+                    },
+                    margin: { t: 60, l: 60, r: 40, b: 60 },
+                    plot_bgcolor: 'white',
+                    paper_bgcolor: 'white'
+                };
+
+                Plotly.react('graph', traces, layout);
+            } catch (error) {
+                console.error('Ошибка при создании графика:', error);
+                alert('Ошибка при отображении графика');
+            }
+        }
+
+        // Функция обновления графика
+        async function updateGraph() {
+            try {
+                const isStudentValid = validateInput('student-input', 'student-error');
+                const isStepValid = validateInput('step-input', 'step-error');
+
+                if (!isStudentValid || !isStepValid) {
+                    return;
                 }
 
-                Plotly.animate(plotDiv, {
-                    data: currentTraces,
-                    traces: [0, 1, 2, 3, 4, 5],
-                    layout: {}
-                }, {
-                    transition: { duration: 0 },
-                    frame: { duration: 0, redraw: true }
+                const studentNum = parseInt(getElementOrThrow('student-input').value);
+                const stepVal = parseInt(getElementOrThrow('step-input').value);
+
+                const response = await fetch(`/get_new_data?student_number=${studentNum}&step=${stepVal}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    currentData = data;
+                    createPlot(data);
+                    getElementOrThrow('student-number').textContent = data.student_number;
+                    getElementOrThrow('step-value').textContent = data.step;
+                } else {
+                    throw new Error(data.message || 'Неизвестная ошибка сервера');
+                }
+            } catch (error) {
+                console.error('Ошибка при обновлении графика:', error);
+                alert(`Ошибка: ${error.message}`);
+            }
+        }
+
+        // Инициализация после загрузки DOM
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                // Назначаем обработчики событий
+                getElementOrThrow('student-input').addEventListener('input', () => {
+                    validateInput('student-input', 'student-error');
                 });
 
-                if (progress < 1) {
-                    requestAnimationFrame(animateFrame);
-                }
+                getElementOrThrow('step-input').addEventListener('input', () => {
+                    validateInput('step-input', 'step-error');
+                });
+
+                getElementOrThrow('update-btn').addEventListener('click', updateGraph);
+
+                // Первоначальная валидация
+                validateInput('student-input', 'student-error');
+                validateInput('step-input', 'step-error');
+
+                // Инициализация графика
+                createPlot(initialData);
+            } catch (error) {
+                console.error('Ошибка инициализации:', error);
+                alert('Произошла ошибка при загрузке страницы');
             }
-
-            animateFrame();
-        }
-
-        // Запускаем анимацию с небольшой задержкой
-        setTimeout(animate, 500);
+        });
     </script>
 </body>
 </html>
