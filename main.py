@@ -1,86 +1,75 @@
-from flask import Flask, render_template, request, jsonify
-from utils import get_plot_data, get_ai_data, get_boxplot_data
 import os
-from typing import Dict, Any
+import pickle
+
+from multiprocessing import Process
+from flask import Flask, render_template, request, jsonify
+
+from utils import get_plot_data, get_ai_data, get_boxplot_data
+from utils import get_gaussian_model
 
 app = Flask(__name__)
 
 # Конфигурация
 app.config['DATA_PATH'] = os.path.join(os.path.dirname(__file__), 'data', 'patients.xlsx')
+app.config['CSS_PATH'] = os.path.join(os.path.dirname(__file__), 'templates', 'styles.css')
 
 # Глобальные переменные состояния
 STUDENT_NUMBER = 1  # Переименовано из CURRENT_STUDENT
 STEP = 15  # Переименовано из CURRENT_STEP
+AI_PROCESS = Process(target=None)
+CURRENT_CLASSIFIER = None
 
 
-def load_and_prepare_data(student_number: int, step: int) -> Dict[str, Any]:
-    """Загрузка и подготовка данных"""
+@app.route('/get_classifier_data', methods=['GET'])
+def get_classifier_data():
+    """Получение данных с именного классификатора (проверка завершения обучения)"""
+    global AI_PROCESS, CURRENT_CLASSIFIER
     try:
-        if not os.path.exists(app.config['DATA_PATH']):
-            raise FileNotFoundError(f"Data file not found at {app.config['DATA_PATH']}")
+        ai_data = []
+        if not AI_PROCESS.is_alive():
+            classifier_name = request.args.get('classifier_name')
+            if classifier_name == 'gaussian':
+                pass
+            elif classifier_name == 'lightgbm':
+                pass
+            # elif classifier_name == '...':
+            #     pass
+            else:
+                raise Exception(f"Invalid classifier name {CURRENT_CLASSIFIER}")
 
-        # Загрузка данных
-        plot_data = get_plot_data(app.config['DATA_PATH'], student_number, step)
-        ai_data = get_ai_data(app.config['DATA_PATH'], student_number, step)
-
-        # Разделение данных
-        healthy = plot_data[plot_data['health'] == 1].reset_index(drop=True)
-        unhealthy = plot_data[plot_data['health'] == 0].reset_index(drop=True)
-
-        if len(healthy) == 0 or len(unhealthy) == 0:
-            raise ValueError("Not enough data for both groups")
-
-        # Проверка согласованности данных
-        if not healthy['wavenumber'].equals(unhealthy['wavenumber']):
-            raise ValueError("Wavenumbers differ between groups")
-
-        # Формирование результата
-        return {
-            'wavenumbers': healthy['wavenumber'].tolist(),
-            'healthy': {
-                'means': healthy['mean_values'].tolist(),
-                'stds': healthy['std'].tolist()
-            },
-            'unhealthy': {
-                'means': unhealthy['mean_values'].tolist(),
-                'stds': unhealthy['std'].tolist()
-            },
-            'ranges': {
-                'x': calculate_x_range(plot_data['wavenumber']),
-                'y': calculate_y_range(healthy, unhealthy)
-            },
-            'student_number': student_number,  # Переименовано
-            'step': step,  # Переименовано
-            'status': 'success'
-        }
-
-    except Exception as e:
-        return {
+            CURRENT_CLASSIFIER = classifier_name
+        return jsonify({
+            'status': 'success',
+            'ai_loading': AI_PROCESS.is_alive(),
+            'ai_data': ai_data,
+        })
+    except ValueError as e:
+        return jsonify({
             'status': 'error',
-            'message': str(e),
-            'student_number': student_number,  # Переименовано
-            'step': step  # Переименовано
-        }
+            'message': f"Invalid input: {str(e)}"
+        }), 400
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f"Server error: {str(e)}"
+        }), 500
 
 
-def calculate_x_range(wavenumbers) -> list:
-    min_x = wavenumbers.min()
-    max_x = wavenumbers.max()
-    padding = (max_x - min_x) * 0.05
-    return [min_x - padding, max_x + padding]
+def create_classifiers():
+    """Обучение классификаторов и сохранение в директорию для дальнейшей работы"""
+    global STEP, STUDENT_NUMBER
+    print("Обучение началось")
+    AI = get_ai_data(app.config['DATA_PATH'], STUDENT_NUMBER, STEP)
 
+    # Гауссовский классификатор
+    with open("data/temp_classifiers/gaussian.pickle", "wb") as file:
+        pickle.dump(get_gaussian_model(AI), file)
 
-def calculate_y_range(healthy, unhealthy) -> list:
-    max_val = max(
-        (healthy['mean_values'] + healthy['std']).max(),
-        (unhealthy['mean_values'] + unhealthy['std']).max()
-    )
-    min_val = min(
-        (healthy['mean_values'] - healthy['std']).min(),
-        (unhealthy['mean_values'] - unhealthy['std']).min()
-    )
-    padding = (max_val - min_val) * 0.1
-    return [min_val - padding, max_val + padding]
+    # ...
+    # with open( ..., "wb") as file:
+    #     pickle.dump( ..., file)
+
+    print("Обучение завершено")
 
 
 def load_boxplot_data(wavenumber):
@@ -102,7 +91,7 @@ def load_boxplot_data(wavenumber):
 def index():
     """Основная страница с формой ввода"""
     global STUDENT_NUMBER, STEP
-    initial_data = load_and_prepare_data(STUDENT_NUMBER, STEP)
+    initial_data = get_plot_data(app.config['DATA_PATH'], STUDENT_NUMBER, STEP)
     print(initial_data)
     return render_template('index.html', initial_data=initial_data)
 
@@ -110,7 +99,7 @@ def index():
 @app.route('/get_new_data', methods=['GET'])
 def get_new_data():
     """API для получения новых данных и обновления глобальных переменных"""
-    global STUDENT_NUMBER, STEP
+    global STUDENT_NUMBER, STEP, AI_PROCESS
 
     try:
         # Получаем новые значения из запроса
@@ -122,14 +111,18 @@ def get_new_data():
             raise ValueError("Values must be positive integers")
 
         # Загружаем данные с новыми параметрами
-        stats = load_and_prepare_data(new_student, new_step)
-
-        if stats['status'] == 'error':
-            return jsonify(stats), 400
+        stats = get_plot_data(app.config['DATA_PATH'], new_student, new_step)
 
         # Обновляем глобальные переменные только после успешной загрузки
         STUDENT_NUMBER = new_student
         STEP = new_step
+
+        # Обучение нейронок
+        AI_PROCESS = Process(target=create_classifiers)
+        AI_PROCESS.start()
+
+        if stats['status'] == 'error':
+            return jsonify(stats), 400
 
         return jsonify(stats)
 
