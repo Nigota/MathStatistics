@@ -150,365 +150,458 @@
             border-left: 4px solid #4CAF50;
             display: none;
         }
+        #graph .js-plotly-plot .plotly .modebar {
+            transition: opacity 0.3s ease;
+        }
+
+        #graph .js-plotly-plot .plotly .cursor-pointer {
+            transition: all 0.3s ease;
+        }
     </style>
 </head>
 <body>
-    <div class="control-panel">
-        <h1>Параметры</h1>
+<div class="control-panel">
+    <h1>Параметры</h1>
 
-        <div class="control-group">
-            <label for="student-input">Student Number:</label>
-            <input type="number" id="student-input" min="1" value="{{ initial_data.student_number }}" required>
-            <div class="error-message" id="student-error">Должно быть целое число > 0</div>
-        </div>
-
-        <div class="control-group">
-            <label for="step-input">Step:</label>
-            <input type="number" id="step-input" min="1" value="{{ initial_data.step }}" required>
-            <div class="error-message" id="step-error">Должно быть целое число > 0</div>
-        </div>
-
-        <button id="update-btn">
-            Обновить график
-            <div class="button-spinner"></div>
-        </button>
-
-        <div class="current-values">
-            <p>Текущий студент: <span id="student-number">{{ initial_data.student_number }}</span></p>
-            <p>Текущий шаг: <span id="step-value">{{ initial_data.step }}</span></p>
-        </div>
-
-        <div class="selected-point-info" id="selected-point-info">
-            <p><strong>Выбранная точка:</strong></p>
-            <p>Волновое число: <span id="selected-wavenumber">-</span> cm⁻¹</p>
-        </div>
+    <div class="control-group">
+        <label for="student-input">Student Number:</label>
+        <input type="number" id="student-input" min="1" value="{{ initial_data.student_number }}" required>
+        <div class="error-message" id="student-error">Должно быть целое число > 0</div>
     </div>
 
-    <div class="graph-container">
-        <div class="graphs-wrapper">
-            <div class="main-graph">
-                <div id="graph" style="width:100%; height:100%;"></div>
-                <div class="loading-overlay" id="graph-loading">
-                    <div class="spinner"></div>
-                </div>
+    <div class="control-group">
+        <label for="step-input">Step:</label>
+        <input type="number" id="step-input" min="1" value="{{ initial_data.step }}" required>
+        <div class="error-message" id="step-error">Должно быть целое число > 0</div>
+    </div>
+
+    <button id="update-btn">
+        Обновить график
+        <div class="button-spinner"></div>
+    </button>
+
+    <div class="current-values">
+        <p>Текущий студент: <span id="student-number">{{ initial_data.student_number }}</span></p>
+        <p>Текущий шаг: <span id="step-value">{{ initial_data.step }}</span></p>
+    </div>
+
+    <div class="selected-point-info" id="selected-point-info">
+        <p><strong>Выбранная точка:</strong></p>
+        <p>Волновое число: <span id="selected-wavenumber">-</span> cm⁻¹</p>
+    </div>
+</div>
+
+<div class="graph-container">
+    <div class="graphs-wrapper">
+        <div class="main-graph">
+            <div id="graph" style="width:100%; height:100%;"></div>
+            <div class="loading-overlay" id="graph-loading">
+                <div class="spinner"></div>
             </div>
-            <div class="boxplot-container">
-                <div id="boxplot" style="width:100%; height:100%;"></div>
-                <div class="loading-overlay" id="boxplot-loading">
-                    <div class="spinner"></div>
-                </div>
+        </div>
+        <div class="boxplot-container">
+            <div id="boxplot" style="width:100%; height:100%;"></div>
+            <div class="loading-overlay" id="boxplot-loading">
+                <div class="spinner"></div>
             </div>
         </div>
     </div>
+</div>
 
-    <script>
-        // Инициализация графика с начальными данными
-        const initialData = {{ initial_data|tojson|safe }};
-        let currentData = initialData;
-        let selectedWavenumber = null;
+<script>
+    // Инициализация графика с начальными данными
+    const initialData = {{ initial_data|tojson|safe }};
+    let currentData = initialData;
+    let selectedWavenumber = null;
 
-        // Проверка существования элемента
-        function getElementOrThrow(id) {
-            const element = document.getElementById(id);
-            if (!element) {
-                throw new Error(`Элемент с ID ${id} не найден`);
-            }
-            return element;
+    // Проверка существования элемента
+    function getElementOrThrow(id) {
+        const element = document.getElementById(id);
+        if (!element) {
+            throw new Error(`Элемент с ID ${id} не найден`);
         }
+        return element;
+    }
 
-        // Валидация ввода
-        function validateInput(inputId, errorId) {
-            try {
-                const input = getElementOrThrow(inputId);
-                const errorElement = getElementOrThrow(errorId);
-                const button = getElementOrThrow('update-btn');
+    // Валидация ввода
+    function validateInput(inputId, errorId) {
+        try {
+            const input = getElementOrThrow(inputId);
+            const errorElement = getElementOrThrow(errorId);
+            const button = getElementOrThrow('update-btn');
 
-                const value = input.value.trim();
-                const numValue = parseInt(value);
-                const isValid = value !== '' && numValue > 0 && numValue.toString() === value;
+            const value = input.value.trim();
+            const numValue = parseInt(value);
+            const isValid = value !== '' && numValue > 0 && numValue.toString() === value;
 
-                if (!isValid) {
-                    input.classList.add('invalid');
-                    errorElement.style.display = 'block';
-                    button.disabled = true;
-                    return false;
-                } else {
-                    input.classList.remove('invalid');
-                    errorElement.style.display = 'none';
-                    button.disabled = false;
-                    return true;
-                }
-            } catch (error) {
-                console.error('Ошибка валидации:', error);
-                return false;
-            }
-        }
-
-        // Создание основного графика
-        function createPlot(data) {
-            try {
-                const traces = [
-                    {
-                        x: data.wavenumbers,
-                        y: data.healthy.means,
-                        name: 'Здоровые (среднее)',
-                        line: { color: 'green', width: 3 },
-                        mode: 'lines'
-                    },
-                    {
-                        x: data.wavenumbers,
-                        y: data.healthy.means.map((m, i) => m + data.healthy.stds[i]),
-                        name: 'Здоровые +СКО',
-                        line: { color: 'green', width: 1, dash: 'dot' },
-                        mode: 'lines',
-                        hoverinfo: 'none'
-                    },
-                    {
-                        x: data.wavenumbers,
-                        y: data.healthy.means.map((m, i) => m - data.healthy.stds[i]),
-                        line: { color: 'green', width: 1, dash: 'dot' },
-                        mode: 'lines',
-                        fill: 'tonexty',
-                        fillcolor: 'rgba(0, 128, 0, 0.15)',
-                        hoverinfo: 'none',
-                        showlegend: false
-                    },
-                    {
-                        x: data.wavenumbers,
-                        y: data.unhealthy.means,
-                        name: 'Больные (среднее)',
-                        line: { color: 'red', width: 3 },
-                        mode: 'lines'
-                    },
-                    {
-                        x: data.wavenumbers,
-                        y: data.unhealthy.means.map((m, i) => m + data.unhealthy.stds[i]),
-                        name: 'Больные +СКО',
-                        line: { color: 'red', width: 1, dash: 'dot' },
-                        mode: 'lines',
-                        hoverinfo: 'none'
-                    },
-                    {
-                        x: data.wavenumbers,
-                        y: data.unhealthy.means.map((m, i) => m - data.unhealthy.stds[i]),
-                        line: { color: 'red', width: 1, dash: 'dot' },
-                        mode: 'lines',
-                        fill: 'tonexty',
-                        fillcolor: 'rgba(255, 0, 0, 0.15)',
-                        hoverinfo: 'none',
-                        showlegend: false
-                    }
-                ];
-
-                const layout = {
-                    title: 'Среднее значение волнового числа у пациентов',
-                    xaxis: {
-                        title: 'Волновое число (cm⁻¹)',
-                        range: data.ranges.x,
-                        showgrid: true,
-                        gridcolor: '#eee'
-                    },
-                    yaxis: {
-                        title: 'Значение',
-                        range: data.ranges.y,
-                        showgrid: true,
-                        gridcolor: '#eee'
-                    },
-                    legend: {
-                        orientation: 'h',
-                        y: -0.2
-                    },
-                    margin: { t: 60, l: 60, r: 40, b: 60 },
-                    plot_bgcolor: 'white',
-                    paper_bgcolor: 'white',
-                    clickmode: 'event+select'
-                };
-
-                Plotly.react('graph', traces, layout);
-
-                // Добавляем обработчик клика
-                document.getElementById('graph').on('plotly_click', function(data) {
-                    if (data.points && data.points.length > 0) {
-                        const point = data.points[0];
-                        selectedWavenumber = point.x;
-                        getElementOrThrow('selected-wavenumber').textContent = selectedWavenumber.toFixed(2);
-                        getElementOrThrow('selected-point-info').style.display = 'block';
-                        updateBoxplot(selectedWavenumber);
-                    }
-                });
-            } catch (error) {
-                console.error('Ошибка при создании графика:', error);
-                alert('Ошибка при отображении графика');
-            }
-        }
-
-        // Создание ящика с усами
-        function createBoxplot(data) {
-            try {
-                const traces = [
-                    {
-                        y: data.healthy,
-                        name: 'Здоровые',
-                        type: 'box',
-                        boxpoints: 'all',
-                        jitter: 0.3,
-                        pointpos: -1.8,
-                        marker: {
-                            color: 'green',
-                            size: 5,
-                            opacity: 0.5
-                        },
-                        line: {
-                            color: 'green',
-                            width: 2
-                        }
-                    },
-                    {
-                        y: data.unhealthy,
-                        name: 'Больные',
-                        type: 'box',
-                        boxpoints: 'all',
-                        jitter: 0.3,
-                        pointpos: -1.8,
-                        marker: {
-                            color: 'red',
-                            size: 5,
-                            opacity: 0.5
-                        },
-                        line: {
-                            color: 'red',
-                            width: 2
-                        }
-                    }
-                ];
-
-                const layout = {
-                    title: `Распределение значений при ${data.wavenumber.toFixed(2)} cm⁻¹`,
-                    yaxis: {
-                        title: 'Значение',
-                        showgrid: true,
-                        gridcolor: '#eee'
-                    },
-                    margin: { t: 60, l: 60, r: 40, b: 60 },
-                    plot_bgcolor: 'white',
-                    paper_bgcolor: 'white',
-                    showlegend: false
-                };
-
-                Plotly.react('boxplot', traces, layout);
-            } catch (error) {
-                console.error('Ошибка при создании ящика с усами:', error);
-                alert('Ошибка при отображении ящика с усами');
-            }
-        }
-
-        // Функция обновления графика
-        async function updateGraph() {
-            try {
-                const isStudentValid = validateInput('student-input', 'student-error');
-                const isStepValid = validateInput('step-input', 'step-error');
-
-                if (!isStudentValid || !isStepValid) {
-                    return;
-                }
-
-                const button = getElementOrThrow('update-btn');
-                const loadingOverlay = getElementOrThrow('graph-loading');
-
-                // Показываем индикаторы загрузки
-                button.classList.add('loading');
+            if (!isValid) {
+                input.classList.add('invalid');
+                errorElement.style.display = 'block';
                 button.disabled = true;
-                loadingOverlay.style.display = 'flex';
-
-                const studentNum = parseInt(getElementOrThrow('student-input').value);
-                const stepVal = parseInt(getElementOrThrow('step-input').value);
-
-                const response = await fetch(`/get_new_data?student_number=${studentNum}&step=${stepVal}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-
-                if (data.status === 'success') {
-                    currentData = data;
-                    createPlot(data);
-                    getElementOrThrow('student-number').textContent = data.student_number;
-                    getElementOrThrow('step-value').textContent = data.step;
-
-                    // Сбрасываем выбранную точку
-                    selectedWavenumber = null;
-                    getElementOrThrow('selected-point-info').style.display = 'none';
-                    Plotly.purge('boxplot');
-                } else {
-                    throw new Error(data.message || 'Неизвестная ошибка сервера');
-                }
-            } catch (error) {
-                console.error('Ошибка при обновлении графика:', error);
-                alert(`Ошибка: ${error.message}`);
-            } finally {
-                // Скрываем индикаторы загрузки в любом случае
-                const button = getElementOrThrow('update-btn');
-                const loadingOverlay = getElementOrThrow('graph-loading');
-
-                button.classList.remove('loading');
+                return false;
+            } else {
+                input.classList.remove('invalid');
+                errorElement.style.display = 'none';
                 button.disabled = false;
-                loadingOverlay.style.display = 'none';
+                return true;
+            }
+        } catch (error) {
+            console.error('Ошибка валидации:', error);
+            return false;
+        }
+    }
+
+    // Создание основного графика с анимацией
+function createPlot(data) {
+try {
+    // Исходное состояние (все линии на нуле)
+    const initialTraces = [
+        {
+            x: data.wavenumbers,
+            y: new Array(data.wavenumbers.length).fill(data.ranges.y[0]),
+            name: 'Здоровые (среднее)',
+            line: { color: 'green', width: 3 },
+            mode: 'lines'
+        },
+        {
+            x: data.wavenumbers,
+            y: new Array(data.wavenumbers.length).fill(data.ranges.y[0]),
+            name: 'Здоровые +СКО',
+            line: { color: 'green', width: 1, dash: 'dot' },
+            mode: 'lines',
+            hoverinfo: 'none'
+        },
+        {
+            x: data.wavenumbers,
+            y: new Array(data.wavenumbers.length).fill(data.ranges.y[0]),
+            line: { color: 'green', width: 1, dash: 'dot' },
+            mode: 'lines',
+            fill: 'tonexty',
+            fillcolor: 'rgba(0, 128, 0, 0.15)',
+            hoverinfo: 'none',
+            showlegend: false
+        },
+        {
+            x: data.wavenumbers,
+            y: new Array(data.wavenumbers.length).fill(data.ranges.y[0]),
+            name: 'Больные (среднее)',
+            line: { color: 'red', width: 3 },
+            mode: 'lines'
+        },
+        {
+            x: data.wavenumbers,
+            y: new Array(data.wavenumbers.length).fill(data.ranges.y[0]),
+            name: 'Больные +СКО',
+            line: { color: 'red', width: 1, dash: 'dot' },
+            mode: 'lines',
+            hoverinfo: 'none'
+        },
+        {
+            x: data.wavenumbers,
+            y: new Array(data.wavenumbers.length).fill(data.ranges.y[0]),
+            line: { color: 'red', width: 1, dash: 'dot' },
+            mode: 'lines',
+            fill: 'tonexty',
+            fillcolor: 'rgba(255, 0, 0, 0.15)',
+            hoverinfo: 'none',
+            showlegend: false
+        }
+    ];
+
+    const layout = {
+        title: 'Среднее значение волнового числа у пациентов',
+        xaxis: {
+            title: 'Волновое число (cm⁻¹)',
+            range: data.ranges.x,
+            showgrid: true,
+            gridcolor: '#eee'
+        },
+        yaxis: {
+            title: 'Значение',
+            range: data.ranges.y,
+            showgrid: true,
+            gridcolor: '#eee'
+        },
+        legend: {
+            orientation: 'h',
+            y: -0.2
+        },
+        margin: { t: 60, l: 60, r: 40, b: 60 },
+        plot_bgcolor: 'white',
+        paper_bgcolor: 'white',
+        clickmode: 'event+select'
+    };
+
+    // Создаем график с начальным состоянием
+    Plotly.newPlot('graph', initialTraces, layout);
+
+    // Анимация графика
+    animatePlot(data, initialTraces);
+
+    // Добавляем обработчик клика
+    document.getElementById('graph').on('plotly_click', function(data) {
+        if (data.points && data.points.length > 0) {
+            const point = data.points[0];
+            selectedWavenumber = point.x;
+            getElementOrThrow('selected-wavenumber').textContent = selectedWavenumber.toFixed(2);
+            getElementOrThrow('selected-point-info').style.display = 'block';
+            updateBoxplot(selectedWavenumber);
+        }
+    });
+} catch (error) {
+    console.error('Ошибка при создании графика:', error);
+    alert('Ошибка при отображении графика');
+}
+}
+
+// Функция анимации графика
+function animatePlot(data, initialTraces) {
+const totalDuration = 2500; // 2.5 секунды общее время анимации
+const startTime = Date.now();
+let currentTraces = JSON.parse(JSON.stringify(initialTraces));
+
+// Функция плавного изменения
+function exponentialEasing(t) {
+    return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+}
+
+function animateFrame() {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(1, elapsed / totalDuration);
+    const easedProgress = exponentialEasing(progress);
+
+    // Разделяем анимацию на фазы
+    if (progress <= 0.5) {
+        // Фаза 1: Построение средних линий (0-1.25s)
+        const phaseProgress = progress * 2;
+        const easedPhaseProgress = exponentialEasing(phaseProgress);
+
+        for (let i = 0; i < data.wavenumbers.length; i++) {
+            // Здоровые
+            currentTraces[0].y[i] = data.ranges.y[0] +
+                (data.healthy.means[i] - data.ranges.y[0]) * easedPhaseProgress;
+
+            // Больные
+            currentTraces[3].y[i] = data.ranges.y[0] +
+                (data.unhealthy.means[i] - data.ranges.y[0]) * easedPhaseProgress;
+        }
+    } else {
+        // Фаза 2: Построение СКО (1.25-2.5s)
+        const phaseProgress = (progress - 0.5) * 2;
+        const easedPhaseProgress = exponentialEasing(phaseProgress);
+
+        for (let i = 0; i < data.wavenumbers.length; i++) {
+            // Здоровые +СКО
+            currentTraces[1].y[i] = data.healthy.means[i] +
+                data.healthy.stds[i] * easedPhaseProgress;
+
+            // Здоровые -СКО
+            currentTraces[2].y[i] = data.healthy.means[i] -
+                data.healthy.stds[i] * easedPhaseProgress;
+
+            // Больные +СКО (с небольшой задержкой)
+            if (phaseProgress > 0.2) {
+                const patientProgress = (phaseProgress - 0.2) / 0.8;
+                const easedPatientProgress = exponentialEasing(patientProgress);
+
+                currentTraces[4].y[i] = data.unhealthy.means[i] +
+                    data.unhealthy.stds[i] * easedPatientProgress;
+
+                currentTraces[5].y[i] = data.unhealthy.means[i] -
+                    data.unhealthy.stds[i] * easedPatientProgress;
             }
         }
+    }
 
-        // Функция обновления ящика с усами
-        async function updateBoxplot(wavenumber) {
-            try {
-                const loadingOverlay = getElementOrThrow('boxplot-loading');
-                loadingOverlay.style.display = 'flex';
+    // Обновляем график
+    Plotly.animate('graph', {
+        data: currentTraces,
+        traces: [0, 1, 2, 3, 4, 5],
+        layout: {}
+    }, {
+        transition: { duration: 0 },
+        frame: { duration: 0, redraw: true }
+    });
 
-                const response = await fetch(`/get_new_boxplot_data?wavenumber=${wavenumber}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+    if (progress < 1) {
+        requestAnimationFrame(animateFrame);
+    }
+}
+
+animateFrame();
+}
+
+// Создание ящика с усами
+function createBoxplot(data) {
+    try {
+        const traces = [
+            {
+                y: data.healthy,
+                name: 'Здоровые',
+                type: 'box',
+                boxpoints: 'all',
+                jitter: 0.3,
+                pointpos: -1.8,
+                marker: {
+                    color: 'green',
+                    size: 5,
+                    opacity: 0.5
+                },
+                line: {
+                    color: 'green',
+                    width: 2
                 }
-
-                const data = await response.json();
-
-                if (data.status === 'success') {
-                    createBoxplot(data);
-                } else {
-                    throw new Error(data.message || 'Неизвестная ошибка сервера');
+            },
+            {
+                y: data.unhealthy,
+                name: 'Больные',
+                type: 'box',
+                boxpoints: 'all',
+                jitter: 0.3,
+                pointpos: -1.8,
+                marker: {
+                    color: 'red',
+                    size: 5,
+                    opacity: 0.5
+                },
+                line: {
+                    color: 'red',
+                    width: 2
                 }
-            } catch (error) {
-                console.error('Ошибка при обновлении ящика с усами:', error);
-                alert(`Ошибка: ${error.message}`);
-            } finally {
-                const loadingOverlay = getElementOrThrow('boxplot-loading');
-                loadingOverlay.style.display = 'none';
             }
+        ];
+
+        const layout = {
+            title: `Распределение значений при ${data.wavenumber.toFixed(2)} cm⁻¹`,
+            yaxis: {
+                title: 'Значение',
+                showgrid: true,
+                gridcolor: '#eee'
+            },
+            margin: { t: 60, l: 60, r: 40, b: 60 },
+            plot_bgcolor: 'white',
+            paper_bgcolor: 'white',
+            showlegend: false
+        };
+
+        Plotly.react('boxplot', traces, layout);
+    } catch (error) {
+        console.error('Ошибка при создании ящика с усами:', error);
+        alert('Ошибка при отображении ящика с усами');
+    }
+}
+
+// Функция обновления графика
+async function updateGraph() {
+    try {
+        const isStudentValid = validateInput('student-input', 'student-error');
+        const isStepValid = validateInput('step-input', 'step-error');
+
+        if (!isStudentValid || !isStepValid) {
+            return;
         }
 
-        // Инициализация после загрузки DOM
-        document.addEventListener('DOMContentLoaded', function() {
-            try {
-                // Назначаем обработчики событий
-                getElementOrThrow('student-input').addEventListener('input', () => {
-                    validateInput('student-input', 'student-error');
-                });
+        const button = getElementOrThrow('update-btn');
+        const loadingOverlay = getElementOrThrow('graph-loading');
 
-                getElementOrThrow('step-input').addEventListener('input', () => {
-                    validateInput('step-input', 'step-error');
-                });
+        // Показываем индикаторы загрузки
+        button.classList.add('loading');
+        button.disabled = true;
+        loadingOverlay.style.display = 'flex';
 
-                getElementOrThrow('update-btn').addEventListener('click', updateGraph);
+        const studentNum = parseInt(getElementOrThrow('student-input').value);
+        const stepVal = parseInt(getElementOrThrow('step-input').value);
 
-                // Первоначальная валидация
-                validateInput('student-input', 'student-error');
-                validateInput('step-input', 'step-error');
+        const response = await fetch(`/get_new_data?student_number=${studentNum}&step=${stepVal}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
-                // Инициализация графика
-                createPlot(initialData);
-            } catch (error) {
-                console.error('Ошибка инициализации:', error);
-                alert('Произошла ошибка при загрузке страницы');
-            }
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            currentData = data;
+
+            // Сначала создаем график с начальным состоянием
+            createPlot(data);
+
+            // Обновляем информацию
+            getElementOrThrow('student-number').textContent = data.student_number;
+            getElementOrThrow('step-value').textContent = data.step;
+
+            // Сбрасываем выбранную точку
+            selectedWavenumber = null;
+            getElementOrThrow('selected-point-info').style.display = 'none';
+            Plotly.purge('boxplot');
+        } else {
+            throw new Error(data.message || 'Неизвестная ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка при обновлении графика:', error);
+        alert(`Ошибка: ${error.message}`);
+    } finally {
+        // Скрываем индикаторы загрузки в любом случае
+        const button = getElementOrThrow('update-btn');
+        const loadingOverlay = getElementOrThrow('graph-loading');
+
+        button.classList.remove('loading');
+        button.disabled = false;
+        loadingOverlay.style.display = 'none';
+    }
+}
+
+// Функция обновления ящика с усами
+async function updateBoxplot(wavenumber) {
+    try {
+        const loadingOverlay = getElementOrThrow('boxplot-loading');
+        loadingOverlay.style.display = 'flex';
+
+        const response = await fetch(`/get_new_boxplot_data?wavenumber=${wavenumber}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            createBoxplot(data);
+        } else {
+            throw new Error(data.message || 'Неизвестная ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка при обновлении ящика с усами:', error);
+        alert(`Ошибка: ${error.message}`);
+    } finally {
+        const loadingOverlay = getElementOrThrow('boxplot-loading');
+        loadingOverlay.style.display = 'none';
+    }
+}
+
+// Инициализация после загрузки DOM
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        // Назначаем обработчики событий
+        getElementOrThrow('student-input').addEventListener('input', () => {
+            validateInput('student-input', 'student-error');
         });
-    </script>
+
+        getElementOrThrow('step-input').addEventListener('input', () => {
+            validateInput('step-input', 'step-error');
+        });
+
+        getElementOrThrow('update-btn').addEventListener('click', updateGraph);
+
+        // Первоначальная валидация
+        validateInput('student-input', 'student-error');
+        validateInput('step-input', 'step-error');
+
+        // Инициализация графика
+        createPlot(initialData);
+    } catch (error) {
+        console.error('Ошибка инициализации:', error);
+        alert('Произошла ошибка при загрузке страницы');
+    }
+});
+</script>
 </body>
 </html>
