@@ -1,42 +1,64 @@
-from flask import Flask
-from utils import get_plot_data, get_ai_data, get_boxplot_data
-import os
 import numpy as np
-
-STEP = 15
-STUDENT_NUMBER = 1
-
-app = Flask(__name__)
-
-# Конфигурация
-app.config['SECRET_KEY'] = 'qzwxecrv12345'
-app.config['DATA_PATH'] = os.path.join(os.path.dirname(__file__), 'data', 'patients.xlsx')
-app.config['MODEL_PATH'] = os.path.join(os.path.dirname(__file__), 'models', 'model.pkl')
-
-data = []
-print(app.config['DATA_PATH'])
-if os.path.exists(app.config['DATA_PATH']):
-    data = get_plot_data(app.config['DATA_PATH'], STUDENT_NUMBER, STEP)
-
-dataset = data[['wavenumber']].copy()
-dataset['mean_values'] = data.drop(columns=['wavenumber', 'health']).mean(axis=1)
-dataset['std'] = data.drop(columns=['wavenumber', 'health']).std(axis=1)
-print(dataset)
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
-def load_boxplot_data(wavenumber):
-    """Подготовка данных для boxplot'ов по конкретной длине волны"""
-    boxplot_data = get_boxplot_data(app.config['DATA_PATH'], wavenumber)
+# === Фильтрация ===
+def mex_hat_filter(y, sigma):
+    x = np.linspace(-5, 5, 100)
+    mex_hat = (1 - (x ** 2 / sigma ** 2)) * np.exp(-x ** 2 / (2 * sigma ** 2))
+    # Делаем зеркальное отражение спектра, чтобы убрать выбросы на концах
+    y_filtered = np.pad(y,
+                        pad_width=len(y) // 2,
+                        mode='reflect')
+    # Делаем свертку и возвращаем исходную длину спектра
+    y_filtered = np.convolve(y_filtered, mex_hat, mode='same')
+    y_filtered = y_filtered[len(y) // 2: -len(y) // 2]
+    return y_filtered
 
-    healthy = boxplot_data[boxplot_data['health'] == 1].drop(columns=['health', 'wavenumber']).values.flatten().tolist()
-    unhealthy = boxplot_data[boxplot_data['health'] == 0].drop(
-        columns=['health', 'wavenumber']).values.flatten().tolist()
 
-    return {
-        'healthy': healthy,
-        'unhealthy': unhealthy,
-        'wavenumber': wavenumber
-    }
+# === Стандартизация ===
+def standard(df, columns):
+    for col in columns:
+        df[col] = (df[col] - df['mean']) / df['std']
+    df['mean'] = df.drop(columns=["wavenumber", 'mean', 'std']).mean(axis=1)
+    df['std'] = df.drop(columns=["wavenumber", 'mean', 'std']).mean(axis=1)
+    print(df.head(3))
+    return df
 
 
-print(load_boxplot_data(511.8803852224))
+# === Обработка датафрейма ===
+def process_data(df, prefix):
+    columns = [f'{prefix}{i}' for i in range(1, 51)]
+    for col in columns:
+        df[col] = mex_hat_filter(df[col], 3)
+    df['mean'] = df.drop(columns=["wavenumber"]).mean(axis=1)
+    df['std'] = df.drop(columns=["wavenumber", 'mean']).std(axis=1)
+
+    # df = standard(df, columns)
+    return df
+
+
+# === Загрузка данных ===
+healthy_raw = pd.read_excel('data/patients.xlsx', sheet_name='health')
+unhealthy_raw = pd.read_excel('data/patients.xlsx', sheet_name='heart disease')
+
+
+# === Визуализация для каждого метода отдельно ===
+def plot_normalization(title):
+    healthy = process_data(healthy_raw, 'healthy')
+    unhealthy = process_data(unhealthy_raw, 'heart_patient')
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(healthy['wavenumber'], healthy['mean'], label='Здоровые', color='green')
+    plt.plot(unhealthy['wavenumber'], unhealthy['mean'], label='Больные', color='red')
+    plt.title(f'{title}')
+    plt.xlabel('Волновое число (см⁻¹)')
+    plt.ylabel('Интенсивность (норм.)')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+# === Вызов графиков ===
+plot_normalization("Нормализация на максимум")
