@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', function() {
         validateInput('step-input', 'step-error');
 
         // Инициализация графика
-        createPlot(initialData);
+        updateGraph();
     } catch (error) {
         console.error('Ошибка инициализации:', error);
         alert('Произошла ошибка при загрузке страницы');

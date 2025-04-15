@@ -6,6 +6,7 @@ from flask import Flask, render_template, request, jsonify
 
 from utils import get_plot_data, get_ai_data, get_boxplot_data
 from utils import get_gaussian_model
+from utils import mex_hat_filter, moving_average_filter
 
 app = Flask(__name__)
 
@@ -18,6 +19,9 @@ STUDENT_NUMBER = 1  # Переименовано из CURRENT_STUDENT
 STEP = 15  # Переименовано из CURRENT_STEP
 AI_PROCESS = Process(target=None)
 CURRENT_CLASSIFIER = None
+filter_funcs = {'None': None,
+                'Mexican Hat': mex_hat_filter,
+                'Moving Average': moving_average_filter}
 
 
 @app.route('/get_classifier_data', methods=['GET'])
@@ -91,9 +95,8 @@ def load_boxplot_data(wavenumber):
 def index():
     """Основная страница с формой ввода"""
     global STUDENT_NUMBER, STEP
-    initial_data = get_plot_data(app.config['DATA_PATH'], STUDENT_NUMBER, STEP)
-    print(initial_data)
-    return render_template('index.html', initial_data=initial_data)
+    filters = filter_funcs.keys()
+    return render_template('index.html', filters=filters)
 
 
 @app.route('/get_new_data', methods=['GET'])
@@ -105,13 +108,16 @@ def get_new_data():
         # Получаем новые значения из запроса
         new_student = int(request.args.get('student_number', STUDENT_NUMBER))
         new_step = int(request.args.get('step', STEP))
+        filter_name = request.args.get('filter_name', 'None')
 
         # Валидация входных данных
         if new_student < 1 or new_step < 1:
             raise ValueError("Values must be positive integers")
 
         # Загружаем данные с новыми параметрами
-        stats = get_plot_data(app.config['DATA_PATH'], new_student, new_step)
+        filter_func = filter_funcs[filter_name]
+        stats = get_plot_data(app.config['DATA_PATH'], new_student,
+                              new_step, filter_func)
 
         # Обновляем глобальные переменные только после успешной загрузки
         STUDENT_NUMBER = new_student

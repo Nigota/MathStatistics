@@ -32,6 +32,16 @@ body {
 .control-group input:invalid {
     border-color: #ff6b6b;
 }
+
+/* Стили для выпадающего списка */
+.control-group select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
 button {
     background-color: #4CAF50;
     color: white;

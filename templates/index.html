@@ -6,8 +6,6 @@
     <title>Анализ спектроскопии пациентов</title>
     <script>
         // Инициализация графика с начальными данными
-        const initialData = {{ initial_data|tojson|safe }};
-        let currentData = initialData;
         let selectedWavenumber = null;
     </script>
     <script src="{{ url_for('static', filename='js/index.js') }}"></script>
@@ -21,14 +19,23 @@
 
     <div class="control-group">
         <label for="student-input">Student Number:</label>
-        <input type="number" id="student-input" min="1" value="{{ initial_data.student_number }}" required>
+        <input type="number" id="student-input" min="1" value="1" required>
         <div class="error-message" id="student-error">Должно быть целое число > 0</div>
     </div>
 
     <div class="control-group">
         <label for="step-input">Step:</label>
-        <input type="number" id="step-input" min="1" value="{{ initial_data.step }}" required>
+        <input type="number" id="step-input" min="1" value="1" required>
         <div class="error-message" id="step-error">Должно быть целое число > 0</div>
+    </div>
+
+    <div class="control-group">
+        <label for="filter-select">Фильтр:</label>
+        <select id="filter-select">
+            {% for filter in filters %}
+            <option value="{{ filter }}">{{ filter }}</option>
+            {% endfor %}
+        </select>
     </div>
 
     <button id="update-btn">

@@ -2,35 +2,21 @@ import os
 
 import pandas as pd
 import numpy as np
-from flask import current_app as app
 
 SHEET1 = 'health'
 SHEET2 = 'heart disease'
 
 
-# === Фильтрация ===
-def mex_hat_filter(y, sigma):
-    x = np.linspace(-5, 5, 100)
-    mex_hat = (1 - (x ** 2 / sigma ** 2)) * np.exp(-x ** 2 / (2 * sigma ** 2))
-    # Делаем зеркальное отражение спектра, чтобы убрать выбросы на концах
-    y_filtered = np.pad(y,
-                        pad_width=len(y) // 2,
-                        mode='reflect')
-    # Делаем свертку и возвращаем исходную длину спектра
-    y_filtered = np.convolve(y_filtered, mex_hat, mode='same')
-    y_filtered = y_filtered[len(y) // 2: -len(y) // 2]
-    return y_filtered
-
-
 # === Обработка датафрейма ===
-def filter_data(df, prefix):
+def filter_data(df, prefix, filter_func):
     columns = [f'{prefix}{i}' for i in range(1, 51)]
     for col in columns:
-        df[col] = mex_hat_filter(df[col], 3)
+        df[col] = filter_func(df[col])
 
     return df
 
 
+# === Расчет оси х ===
 def calculate_x_range(wavenumbers) -> list:
     min_x = wavenumbers.min()
     max_x = wavenumbers.max()
@@ -38,6 +24,7 @@ def calculate_x_range(wavenumbers) -> list:
     return [min_x - padding, max_x + padding]
 
 
+# === Расчет оси y ===
 def calculate_y_range(healthy, unhealthy) -> list:
     max_val = max(
         (healthy['mean_values'] + healthy['std']).max(),
@@ -51,39 +38,51 @@ def calculate_y_range(healthy, unhealthy) -> list:
     return [min_val - padding, max_val + padding]
 
 
-def get_plot_data(file_path, student_number, count):
+# === Получение данных из файла ===
+def get_data_from_exel(file_path, student_number, count):
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Data file not found at {file_path}")
+
+    healthy_df = pd.read_excel(file_path, SHEET1)
+    unhealthy_df = pd.read_excel(file_path, SHEET2)
+    # Выбираем нужные данные
+    length = min(len(healthy_df['wavenumber']), len(unhealthy_df['wavenumber']))
+    list_number = student_number
+    step = length // count
+    step += 1 if step % 2 != 0 else 0  # Данные должны быть четными для фильтра
+    start = step * (list_number - 1)
+    end = step * list_number
+
+    healthy_df = healthy_df[start:end].reset_index(drop=True)
+    unhealthy_df = unhealthy_df[start:end].reset_index(drop=True)
+
+    # Проверка наличия данных
+    if len(healthy_df) == 0 or len(unhealthy_df) == 0:
+        raise ValueError("Not enough data for both groups")
+
+    # Проверка согласованности данных
+    if not healthy_df['wavenumber'].equals(unhealthy_df['wavenumber']):
+        raise ValueError("Wavenumbers differ between groups")
+
+    return healthy_df, unhealthy_df
+
+
+def get_plot_data(file_path, student_number, count, filter_func=None):
     """Загрузка и подготовка данных"""
     try:
-        if not os.path.exists(app.config['DATA_PATH']):
-            raise FileNotFoundError(f"Data file not found at {app.config['DATA_PATH']}")
+        # Получаем данные
+        healthy_df, unhealthy_df = get_data_from_exel(file_path, student_number, count)
 
-        healthy_df = pd.read_excel(file_path, SHEET1)
-        unhealthy_df = pd.read_excel(file_path, SHEET2)
-        # Выбираем нужные данные
-        length = min(len(healthy_df['wavenumber']), len(unhealthy_df['wavenumber']))
-        list_number = student_number
-        step = length // count
-        step += 1 if step % 2 != 0 else 0
-        start = step * (list_number - 1)
-        end = step * list_number
-        healthy_df = healthy_df[start:end].reset_index(drop=True)
-        unhealthy_df = unhealthy_df[start:end].reset_index(drop=True)
-
-        healthy_df = filter_data(healthy_df, 'healthy')
-        unhealthy_df = filter_data(unhealthy_df, 'heart_patient')
+        # Фильтрация
+        if filter_func is not None:
+            healthy_df = filter_data(healthy_df, 'healthy', filter_func)
+            unhealthy_df = filter_data(unhealthy_df, 'heart_patient', filter_func)
 
         healthy_df['mean_values'] = healthy_df.drop(columns=['wavenumber']).mean(axis=1)
         healthy_df['std'] = healthy_df.drop(columns=['wavenumber', 'mean_values']).std(axis=1)
 
         unhealthy_df['mean_values'] = unhealthy_df.drop(columns=['wavenumber']).mean(axis=1)
         unhealthy_df['std'] = unhealthy_df.drop(columns=['wavenumber', 'mean_values']).std(axis=1)
-
-        if len(healthy_df) == 0 or len(unhealthy_df) == 0:
-            raise ValueError("Not enough data for both groups")
-
-        # Проверка согласованности данных
-        if not healthy_df['wavenumber'].equals(unhealthy_df['wavenumber']):
-            raise ValueError("Wavenumbers differ between groups")
 
         return {
             'wavenumbers': healthy_df['wavenumber'].tolist(),

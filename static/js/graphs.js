@@ -1,41 +1,41 @@
-    // Проверка существования элемента
-    function getElementOrThrow(id) {
-        const element = document.getElementById(id);
-        if (!element) {
-            throw new Error(`Элемент с ID ${id} не найден`);
-        }
-        return element;
+// Проверка существования элемента
+function getElementOrThrow(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+        throw new Error(`Элемент с ID ${id} не найден`);
     }
+    return element;
+}
 
-    // Валидация ввода
-    function validateInput(inputId, errorId) {
-        try {
-            const input = getElementOrThrow(inputId);
-            const errorElement = getElementOrThrow(errorId);
-            const button = getElementOrThrow('update-btn');
+// Валидация ввода
+function validateInput(inputId, errorId) {
+    try {
+        const input = getElementOrThrow(inputId);
+        const errorElement = getElementOrThrow(errorId);
+        const button = getElementOrThrow('update-btn');
 
-            const value = input.value.trim();
-            const numValue = parseInt(value);
-            const isValid = value !== '' && numValue > 0 && numValue.toString() === value;
+        const value = input.value.trim();
+        const numValue = parseInt(value);
+        const isValid = value !== '' && numValue > 0 && numValue.toString() === value;
 
-            if (!isValid) {
-                input.classList.add('invalid');
-                errorElement.style.display = 'block';
-                button.disabled = true;
-                return false;
-            } else {
-                input.classList.remove('invalid');
-                errorElement.style.display = 'none';
-                button.disabled = false;
-                return true;
-            }
-        } catch (error) {
-            console.error('Ошибка валидации:', error);
+        if (!isValid) {
+            input.classList.add('invalid');
+            errorElement.style.display = 'block';
+            button.disabled = true;
             return false;
+        } else {
+            input.classList.remove('invalid');
+            errorElement.style.display = 'none';
+            button.disabled = false;
+            return true;
         }
+    } catch (error) {
+        console.error('Ошибка валидации:', error);
+        return false;
     }
+}
 
-    // Создание основного графика с анимацией
+// Создание основного графика с анимацией
 function createPlot(data) {
 try {
     // Исходное состояние (все линии на нуле)
@@ -121,7 +121,6 @@ try {
 
     // Анимация графика
     animatePlot(data, initialTraces);
-
     // Добавляем обработчик клика
     document.getElementById('graph').on('plotly_click', function(data) {
         if (data.points && data.points.length > 0) {
@@ -295,8 +294,9 @@ async function updateGraph() {
 
         const studentNum = parseInt(getElementOrThrow('student-input').value);
         const stepVal = parseInt(getElementOrThrow('step-input').value);
+        const filterName = getElementOrThrow('filter-select').value;
 
-        const response = await fetch(`/get_new_data?student_number=${studentNum}&step=${stepVal}`);
+        const response = await fetch(`/get_new_data?student_number=${studentNum}&step=${stepVal}&filter_name=${filterName}`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
